@@ -42,13 +42,26 @@
 .app-header {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
 
-  .month-nav {
-    flex: 1;
-    margin-bottom: 0;
-  }
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-h);
+  letter-spacing: -0.3px;
+}
+
+/* Month nav standalone */
+.month-nav {
+  margin-bottom: 24px;
 }
 
 .signout-btn {
@@ -109,6 +122,7 @@
 /* Spending chart */
 .spending-chart {
   margin-bottom: 24px;
+  overflow: hidden;
 
   h2 {
     margin-bottom: 16px;
@@ -168,6 +182,10 @@ main {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 24px;
+
+  @media (max-width: 640px) {
+    padding: 16px;
+  }
 }
 
 /* Summary */
@@ -372,12 +390,12 @@ tbody tr:hover td {
 
 .filter-search {
   flex: 1;
-  min-width: 160px;
+  min-width: 120px;
 }
 
 .filter-category {
-  flex: 0 0 auto;
-  min-width: 160px;
+  flex: 1;
+  min-width: 120px;
 }
 
 /* Row actions */
@@ -447,4 +465,139 @@ tbody tr:hover td {
   color: var(--text);
   font-size: 14px;
   padding: 8px 0;
+}
+
+/* ── Mobile expense list ─────────────────────────────────── */
+@media (max-width: 640px) {
+  /* Disable hover highlight on touch */
+  tbody tr:hover td {
+    background: none;
+  }
+
+  .expense-list table {
+    display: block;
+  }
+
+  .expense-list thead {
+    display: none;
+  }
+
+  .expense-list tbody {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Each row becomes a 2-column card */
+  .expense-list tbody tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    column-gap: 8px;
+    row-gap: 3px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .expense-list tbody tr:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  /* Description — top left */
+  .expense-list td:nth-child(2) {
+    grid-column: 1;
+    grid-row: 1;
+    padding: 0;
+    border: none;
+    font-size: 15px;
+    color: var(--text-h);
+  }
+
+  /* Date — bottom left */
+  .expense-list td:nth-child(1) {
+    grid-column: 1;
+    grid-row: 2;
+    padding: 0;
+    border: none;
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+    align-self: center;
+  }
+
+  /* Category — hide (shown as filter) */
+  .expense-list td:nth-child(3) {
+    display: none;
+  }
+
+  /* Amount — top right */
+  .expense-list td:nth-child(4) {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 0;
+    border: none;
+    text-align: right;
+    font-weight: 600;
+    align-self: center;
+    white-space: nowrap;
+  }
+
+  /* Actions — bottom right */
+  .expense-list td:nth-child(5) {
+    grid-column: 2;
+    grid-row: 2;
+    padding: 0;
+    border: none;
+    justify-content: flex-end;
+    align-self: center;
+  }
+
+  /* Editing row — stacked form */
+  .expense-list .editing-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .expense-list .editing-row td {
+    display: block;
+    padding: 0;
+    border: none;
+    width: 100%;
+  }
+
+  /* Show category cell in edit mode */
+  .expense-list .editing-row td:nth-child(3) {
+    display: block;
+  }
+
+  .expense-list .editing-row td input,
+  .expense-list .editing-row td select {
+    font-size: 15px;
+    padding: 8px 10px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .expense-list .editing-row td:first-child input {
+    min-width: unset;
+  }
+
+  .expense-list .editing-row td:nth-child(4) input {
+    max-width: unset;
+  }
+
+  .expense-list .editing-row .row-actions {
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .expense-list .editing-row .save-btn,
+  .expense-list .editing-row .cancel-btn {
+    font-size: 18px;
+    padding: 4px 10px;
+  }
 }

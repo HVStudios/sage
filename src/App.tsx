@@ -4,6 +4,7 @@ import type { TooltipContentProps } from 'recharts'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabaseClient'
 import Auth from './Auth'
+import Logo from './Logo'
 import './App.css'
 
 interface Expense {
@@ -465,11 +466,15 @@ export default function App() {
         </div>
       )}
       <div className="app-header">
-        <MonthNav currentMonth={currentMonth} onPrev={prevMonth} onNext={nextMonth} />
+        <div className="app-brand">
+          <Logo size={28} />
+          <span className="app-name">Expense Tracker</span>
+        </div>
         {!guestMode && (
           <button className="signout-btn" onClick={() => supabase.auth.signOut()}>Sign out</button>
         )}
       </div>
+      <MonthNav currentMonth={currentMonth} onPrev={prevMonth} onNext={nextMonth} />
       <SpendingChart data={chartData} />
       <div className="layout">
         <aside>

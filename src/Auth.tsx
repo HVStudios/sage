@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from './supabaseClient'
+import Logo from './Logo'
 import './Auth.css'
 
 interface AuthProps {
@@ -41,7 +42,10 @@ export default function Auth({ onContinueAsGuest }: AuthProps) {
   return (
     <div className="auth-wrapper">
       <div className="auth-card">
-        <h1>Expense Tracker</h1>
+        <div className="auth-logo">
+          <Logo size={36} />
+          <h1>Expense Tracker</h1>
+        </div>
         <h2>{mode === 'signin' ? 'Sign in' : 'Create account'}</h2>
         <form onSubmit={handleSubmit}>
           <label>
