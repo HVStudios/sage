@@ -36,22 +36,29 @@
   button[type='submit'] {
     margin-top: 4px;
     padding: 10px;
-    background: var(--accent);
+    background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
     color: #fff;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     font-size: 15px;
     font-family: var(--sans);
     cursor: pointer;
-    transition: opacity 0.15s;
+    box-shadow: 0 4px 14px rgba(124, 58, 237, 0.4);
+    transition: box-shadow 0.15s, transform 0.15s;
 
     &:hover:not(:disabled) {
-      opacity: 0.88;
+      box-shadow: 0 6px 20px rgba(124, 58, 237, 0.5);
+      transform: translateY(-1px);
+    }
+
+    &:active:not(:disabled) {
+      transform: translateY(0);
     }
 
     &:disabled {
       opacity: 0.6;
       cursor: not-allowed;
+      box-shadow: none;
     }
   }
 }

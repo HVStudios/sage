@@ -32,6 +32,19 @@ interface ChartEntry {
 
 const CATEGORIES = ['Groceries', 'Dining', 'Drinks', 'Transport', 'Housing', 'Entertainment', 'Health', 'Clothes', 'Shopping', 'Other']
 
+const CATEGORY_COLORS: Record<string, string> = {
+  Groceries:     '#22c55e',
+  Dining:        '#f97316',
+  Drinks:        '#06b6d4',
+  Transport:     '#3b82f6',
+  Housing:       '#8b5cf6',
+  Entertainment: '#ec4899',
+  Health:        '#14b8a6',
+  Clothes:       '#f59e0b',
+  Shopping:      '#ef4444',
+  Other:         '#94a3b8',
+}
+
 interface MonthNavProps {
   currentMonth: MonthState
   onPrev: () => void
@@ -56,18 +69,22 @@ interface CategoryBarProps {
   category: string
   amount: number
   max: number
+  color: string
 }
 
-function CategoryBar({ category, amount, max }: CategoryBarProps) {
+function CategoryBar({ category, amount, max, color }: CategoryBarProps) {
   const pct = max > 0 ? (amount / max) * 100 : 0
   return (
     <div className="category-bar">
       <div className="category-bar-header">
-        <span className="category-label">{category}</span>
+        <span className="category-label">
+          <span className="category-dot" style={{ background: color }} />
+          {category}
+        </span>
         <span className="category-amount">{amount.toFixed(2)} kr</span>
       </div>
       <div className="bar-track">
-        <div className="bar-fill" style={{ width: `${pct.toFixed(1)}%` }} />
+        <div className="bar-fill" style={{ width: `${pct.toFixed(1)}%`, background: color }} />
       </div>
     </div>
   )
@@ -100,7 +117,7 @@ function Summary({ expenses }: SummaryProps) {
           <p className="empty">No expenses this month.</p>
         ) : (
           sorted.map(([cat, amt]) => (
-            <CategoryBar key={cat} category={cat} amount={amt} max={max} />
+            <CategoryBar key={cat} category={cat} amount={amt} max={max} color={CATEGORY_COLORS[cat] ?? '#94a3b8'} />
           ))
         )}
       </div>
@@ -327,7 +344,11 @@ function ExpenseList({ expenses, onDelete, onEdit }: ExpenseListProps) {
               <tr key={e.id}>
                 <td>{new Date(e.date + 'T00:00:00').toLocaleDateString('default', { month: 'short', day: 'numeric' })}</td>
                 <td>{e.description}</td>
-                <td><span className="badge">{e.category}</span></td>
+                <td><span className="badge" style={{
+                  color: CATEGORY_COLORS[e.category] ?? '#94a3b8',
+                  background: `${CATEGORY_COLORS[e.category] ?? '#94a3b8'}18`,
+                  borderColor: `${CATEGORY_COLORS[e.category] ?? '#94a3b8'}44`,
+                }}>{e.category}</span></td>
                 <td className="amount-cell">{e.amount.toFixed(2)} kr</td>
                 <td className="row-actions">
                   <button className="edit-btn" onClick={() => startEdit(e)}>&#9998;</button>
