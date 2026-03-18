@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from './supabaseClient'
 import './Auth.css'
 
-export default function Auth() {
+export default function Auth({ onContinueAsGuest }) {
   const [mode, setMode] = useState('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -58,6 +58,10 @@ export default function Auth() {
           {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
           <button onClick={switchMode}>{mode === 'signin' ? 'Sign up' : 'Sign in'}</button>
         </p>
+        <div className="auth-divider"><span>or</span></div>
+        <button className="guest-btn" onClick={onContinueAsGuest}>
+          Continue as guest
+        </button>
       </div>
     </div>
   )

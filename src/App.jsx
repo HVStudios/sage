@@ -166,6 +166,7 @@ function ExpenseList({ expenses, onDelete }) {
 export default function App() {
   const [session, setSession] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [guestMode, setGuestMode] = useState(false)
   const [expenses, setExpenses] = useState([])
   const [currentMonth, setCurrentMonth] = useState(() => {
     const now = new Date()
@@ -184,14 +185,11 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      if (!session) { setExpenses([]); return }
-      const { data, error } = await supabase.from('expenses').select('*')
-      if (!cancelled && !error) setExpenses(data ?? [])
-    })()
-    return () => { cancelled = true }
-  }, [session])
+    if (guestMode || !session) { setExpenses([]); return }
+    supabase.from('expenses').select('*').then(({ data, error }) => {
+      if (!error) setExpenses(data ?? [])
+    })
+  }, [session, guestMode])
 
   function prevMonth() {
     setCurrentMonth(({ year, month }) => {
@@ -208,6 +206,13 @@ export default function App() {
   }
 
   async function handleAdd(expense) {
+    if (guestMode) {
+      const newExpense = { ...expense, id: crypto.randomUUID() }
+      setExpenses(prev => [...prev, newExpense])
+      const d = new Date(expense.date + 'T00:00:00')
+      setCurrentMonth({ year: d.getFullYear(), month: d.getMonth() })
+      return
+    }
     const { data, error } = await supabase
       .from('expenses')
       .insert({ ...expense, user_id: session.user.id })
@@ -220,6 +225,10 @@ export default function App() {
   }
 
   async function handleDelete(id) {
+    if (guestMode) {
+      setExpenses(prev => prev.filter(e => e.id !== id))
+      return
+    }
     const { error } = await supabase.from('expenses').delete().eq('id', id)
     if (error) { console.error(error); return }
     setExpenses(prev => prev.filter(e => e.id !== id))
@@ -235,13 +244,21 @@ export default function App() {
 
   if (authLoading) return null
 
-  if (!session) return <Auth />
+  if (!session && !guestMode) return <Auth onContinueAsGuest={() => setGuestMode(true)} />
 
   return (
     <div className="app">
+      {guestMode && (
+        <div className="guest-banner">
+          You're browsing as a guest — data won't be saved.{' '}
+          <button onClick={() => setGuestMode(false)}>Sign in to save your data</button>
+        </div>
+      )}
       <div className="app-header">
         <MonthNav currentMonth={currentMonth} onPrev={prevMonth} onNext={nextMonth} />
-        <button className="signout-btn" onClick={() => supabase.auth.signOut()}>Sign out</button>
+        {!guestMode && (
+          <button className="signout-btn" onClick={() => supabase.auth.signOut()}>Sign out</button>
+        )}
       </div>
       <div className="layout">
         <aside>

@@ -8,6 +8,36 @@
   }
 }
 
+/* Guest banner */
+.guest-banner {
+  font-size: 14px;
+  color: var(--text);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+
+  button {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 14px;
+    font-family: var(--sans);
+    padding: 0;
+    text-decoration: underline;
+
+    &:hover {
+      opacity: 0.8;
+    }
+  }
+}
+
 /* App header */
 .app-header {
   display: flex;
