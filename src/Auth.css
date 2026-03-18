@@ -104,34 +104,6 @@
   }
 }
 
-.oauth-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.oauth-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 10px;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-h);
-  font-size: 15px;
-  font-family: var(--sans);
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-
-  &:hover {
-    border-color: var(--accent-border);
-    background: var(--accent-bg);
-  }
-}
 
 .auth-toggle {
   font-size: 14px;
