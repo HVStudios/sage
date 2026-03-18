@@ -1,12 +1,41 @@
 import { useState, useEffect, useMemo } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import type { TooltipContentProps } from 'recharts'
+import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabaseClient'
 import Auth from './Auth'
 import './App.css'
 
+interface Expense {
+  id: string
+  date: string
+  description: string
+  category: string
+  amount: number
+  user_id?: string
+  created_at?: string
+}
+
+interface MonthState {
+  year: number
+  month: number
+}
+
+interface ChartEntry {
+  label: string
+  total: number
+  isCurrent: boolean
+}
+
 const CATEGORIES = ['Groceries', 'Dining', 'Drinks', 'Transport', 'Housing', 'Entertainment', 'Health', 'Clothes', 'Shopping', 'Other']
 
-function MonthNav({ currentMonth, onPrev, onNext }) {
+interface MonthNavProps {
+  currentMonth: MonthState
+  onPrev: () => void
+  onNext: () => void
+}
+
+function MonthNav({ currentMonth, onPrev, onNext }: MonthNavProps) {
   const label = new Date(currentMonth.year, currentMonth.month).toLocaleString('default', {
     month: 'long',
     year: 'numeric',
@@ -20,7 +49,13 @@ function MonthNav({ currentMonth, onPrev, onNext }) {
   )
 }
 
-function CategoryBar({ category, amount, max }) {
+interface CategoryBarProps {
+  category: string
+  amount: number
+  max: number
+}
+
+function CategoryBar({ category, amount, max }: CategoryBarProps) {
   const pct = max > 0 ? (amount / max) * 100 : 0
   return (
     <div className="category-bar">
@@ -35,10 +70,14 @@ function CategoryBar({ category, amount, max }) {
   )
 }
 
-function Summary({ expenses }) {
+interface SummaryProps {
+  expenses: Expense[]
+}
+
+function Summary({ expenses }: SummaryProps) {
   const total = expenses.reduce((sum, e) => sum + e.amount, 0)
 
-  const byCategory = expenses.reduce((acc, e) => {
+  const byCategory = expenses.reduce<Record<string, number>>((acc, e) => {
     acc[e.category] = (acc[e.category] ?? 0) + e.amount
     return acc
   }, {})
@@ -66,17 +105,22 @@ function Summary({ expenses }) {
   )
 }
 
-function ChartTooltip({ active, payload, label }) {
+function ChartTooltip({ active, payload, label }: Partial<TooltipContentProps>) {
   if (!active || !payload?.length) return null
+  const value = typeof payload[0].value === 'number' ? payload[0].value : 0
   return (
     <div className="chart-tooltip">
       <p className="chart-tooltip-label">{label}</p>
-      <p className="chart-tooltip-value">{payload[0].value.toFixed(2)} kr</p>
+      <p className="chart-tooltip-value">{value.toFixed(2)} kr</p>
     </div>
   )
 }
 
-function SpendingChart({ data }) {
+interface SpendingChartProps {
+  data: ChartEntry[]
+}
+
+function SpendingChart({ data }: SpendingChartProps) {
   const accentColor = useMemo(
     () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#aa3bff',
     []
@@ -108,7 +152,12 @@ function SpendingChart({ data }) {
   )
 }
 
-function AddExpenseForm({ onAdd, defaultDate }) {
+interface AddExpenseFormProps {
+  onAdd: (expense: Omit<Expense, 'id' | 'user_id' | 'created_at'>) => void
+  defaultDate: string
+}
+
+function AddExpenseForm({ onAdd, defaultDate }: AddExpenseFormProps) {
   const [form, setForm] = useState({
     date: defaultDate,
     description: '',
@@ -116,11 +165,11 @@ function AddExpenseForm({ onAdd, defaultDate }) {
     amount: '',
   })
 
-  function set(field, value) {
+  function set(field: string, value: string) {
     setForm(f => ({ ...f, [field]: value }))
   }
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const amount = parseFloat(form.amount)
     if (!form.date || !form.description || isNaN(amount) || amount <= 0) return
@@ -170,28 +219,41 @@ function AddExpenseForm({ onAdd, defaultDate }) {
   )
 }
 
-function ExpenseList({ expenses, onDelete, onEdit }) {
+interface ExpenseListProps {
+  expenses: Expense[]
+  onDelete: (id: string) => void
+  onEdit: (id: string, updates: Omit<Expense, 'id' | 'user_id' | 'created_at'>) => void
+}
+
+type EditDraft = {
+  date: string
+  description: string
+  category: string
+  amount: string | number
+}
+
+function ExpenseList({ expenses, onDelete, onEdit }: ExpenseListProps) {
   const [search, setSearch] = useState('')
   const [filterCategory, setFilterCategory] = useState('All')
-  const [editingId, setEditingId] = useState(null)
-  const [editDraft, setEditDraft] = useState({})
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState<EditDraft>({ date: '', description: '', category: '', amount: '' })
 
-  function startEdit(e) {
+  function startEdit(e: Expense) {
     setEditingId(e.id)
     setEditDraft({ date: e.date, description: e.description, category: e.category, amount: e.amount })
   }
 
   function cancelEdit() {
     setEditingId(null)
-    setEditDraft({})
+    setEditDraft({ date: '', description: '', category: '', amount: '' })
   }
 
-  function saveEdit(id) {
-    const amount = parseFloat(editDraft.amount)
+  function saveEdit(id: string) {
+    const amount = parseFloat(String(editDraft.amount))
     if (!editDraft.date || !editDraft.description || isNaN(amount) || amount <= 0) return
-    onEdit(id, { ...editDraft, amount })
+    onEdit(id, { date: editDraft.date, description: editDraft.description, category: editDraft.category, amount })
     setEditingId(null)
-    setEditDraft({})
+    setEditDraft({ date: '', description: '', category: '', amount: '' })
   }
 
   const filtered = [...expenses]
@@ -250,7 +312,7 @@ function ExpenseList({ expenses, onDelete, onEdit }) {
                   </select>
                 </td>
                 <td>
-                  <input type="number" min="0.01" step="0.01" value={editDraft.amount}
+                  <input type="number" min="0.01" step="0.01" value={String(editDraft.amount)}
                     onChange={ev => setEditDraft(d => ({ ...d, amount: ev.target.value }))} />
                 </td>
                 <td className="row-actions">
@@ -278,11 +340,11 @@ function ExpenseList({ expenses, onDelete, onEdit }) {
 }
 
 export default function App() {
-  const [session, setSession] = useState(null)
+  const [session, setSession] = useState<Session | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [guestMode, setGuestMode] = useState(false)
-  const [expenses, setExpenses] = useState([])
-  const [currentMonth, setCurrentMonth] = useState(() => {
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [currentMonth, setCurrentMonth] = useState<MonthState>(() => {
     const now = new Date()
     return { year: now.getFullYear(), month: now.getMonth() }
   })
@@ -322,7 +384,7 @@ export default function App() {
     })
   }
 
-  async function handleAdd(expense) {
+  async function handleAdd(expense: Omit<Expense, 'id' | 'user_id' | 'created_at'>) {
     if (guestMode) {
       setExpenses(prev => [...prev, { ...expense, id: crypto.randomUUID() }])
       const d = new Date(expense.date + 'T00:00:00')
@@ -331,7 +393,7 @@ export default function App() {
     }
     const { data, error } = await supabase
       .from('expenses')
-      .insert({ ...expense, user_id: session.user.id })
+      .insert({ ...expense, user_id: session!.user.id })
       .select()
       .single()
     if (error) { console.error(error); return }
@@ -340,7 +402,7 @@ export default function App() {
     setCurrentMonth({ year: d.getFullYear(), month: d.getMonth() })
   }
 
-  async function handleDelete(id) {
+  async function handleDelete(id: string) {
     if (guestMode) {
       setExpenses(prev => prev.filter(e => e.id !== id))
       return
@@ -350,7 +412,7 @@ export default function App() {
     setExpenses(prev => prev.filter(e => e.id !== id))
   }
 
-  async function handleEdit(id, updates) {
+  async function handleEdit(id: string, updates: Omit<Expense, 'id' | 'user_id' | 'created_at'>) {
     if (guestMode) {
       setExpenses(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e))
       return
@@ -370,7 +432,7 @@ export default function App() {
     return d.getFullYear() === currentMonth.year && d.getMonth() === currentMonth.month
   })
 
-  const chartData = useMemo(() => {
+  const chartData = useMemo<ChartEntry[]>(() => {
     const now = new Date()
     return Array.from({ length: 6 }, (_, i) => {
       const d = new Date(now.getFullYear(), now.getMonth() - 5 + i)
