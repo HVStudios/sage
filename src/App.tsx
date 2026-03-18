@@ -5,6 +5,8 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabaseClient'
 import Auth from './Auth'
 import Logo from './Logo'
+import { getInsights } from './insights'
+import type { ExpenseSummary } from './insights'
 import './App.css'
 
 interface Expense {
@@ -340,6 +342,68 @@ function ExpenseList({ expenses, onDelete, onEdit }: ExpenseListProps) {
   )
 }
 
+interface InsightsCardProps {
+  summary: ExpenseSummary
+}
+
+function InsightsCard({ summary }: InsightsCardProps) {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [result, setResult] = useState<string>('')
+  const [error, setError] = useState<string>('')
+
+  async function analyze() {
+    setStatus('loading')
+    setError('')
+    try {
+      const text = await getInsights(summary)
+      setResult(text)
+      setStatus('done')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong.')
+      setStatus('error')
+    }
+  }
+
+  const hasData = summary.currentMonth.count > 0 ||
+    summary.lastSixMonths.some(m => m.total > 0)
+
+  return (
+    <div className="insights-card card">
+      <div className="insights-header">
+        <h2>AI Insights</h2>
+        {hasData && status !== 'loading' && (
+          <button className="insights-btn" onClick={analyze}>
+            {status === 'done' ? 'Refresh' : 'Analyze my spending'}
+          </button>
+        )}
+      </div>
+      {status === 'idle' && (
+        <p className="insights-hint">
+          {hasData
+            ? 'Get personalized suggestions based on your spending patterns.'
+            : 'Add some expenses to get AI-powered insights.'}
+        </p>
+      )}
+      {status === 'loading' && (
+        <div className="insights-loading">
+          <span className="insights-spinner" />
+          Analyzing your spending…
+        </div>
+      )}
+      {status === 'done' && (
+        <div className="insights-result">
+          {result.split('\n').filter(l => l.trim()).map((line, i) => (
+            <p key={i}>{line}</p>
+          ))}
+        </div>
+      )}
+      {status === 'error' && (
+        <p className="insights-error">{error}</p>
+      )}
+    </div>
+  )
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
@@ -454,6 +518,29 @@ export default function App() {
   const defaultDate = new Date(currentMonth.year, currentMonth.month, new Date().getDate())
     .toISOString().split('T')[0]
 
+  const insightsSummary = useMemo<ExpenseSummary>(() => {
+    const now = new Date()
+    const currentLabel = new Date(now.getFullYear(), now.getMonth())
+      .toLocaleString('default', { month: 'long', year: 'numeric' })
+    const currentMonthExpenses = expenses.filter(e => {
+      const d = new Date(e.date + 'T00:00:00')
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+    })
+    const byCategory = currentMonthExpenses.reduce<Record<string, number>>((acc, e) => {
+      acc[e.category] = (acc[e.category] ?? 0) + e.amount
+      return acc
+    }, {})
+    return {
+      currentMonth: {
+        label: currentLabel,
+        total: currentMonthExpenses.reduce((s, e) => s + e.amount, 0),
+        byCategory,
+        count: currentMonthExpenses.length,
+      },
+      lastSixMonths: chartData.map(m => ({ label: m.label, total: m.total })),
+    }
+  }, [expenses, chartData])
+
   if (authLoading) return null
   if (!session && !guestMode) return <Auth onContinueAsGuest={() => setGuestMode(true)} />
 
@@ -476,6 +563,7 @@ export default function App() {
       </div>
       <MonthNav currentMonth={currentMonth} onPrev={prevMonth} onNext={nextMonth} />
       <SpendingChart data={chartData} />
+      <InsightsCard summary={insightsSummary} />
       <div className="layout">
         <aside>
           <Summary expenses={monthExpenses} />
