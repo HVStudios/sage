@@ -751,7 +751,6 @@ tbody tr:hover td {
     grid-row: 2;
     padding: 0;
     border: none;
-    justify-content: flex-end;
     align-self: center;
   }
 

@@ -444,9 +444,11 @@ function ExpenseList({ expenses, onDelete, onEdit }: ExpenseListProps) {
                   <input type="number" min="0.01" step="0.01" value={String(editDraft.amount)}
                     onChange={ev => setEditDraft(d => ({ ...d, amount: ev.target.value }))} />
                 </td>
-                <td className="row-actions">
-                  <button className="save-btn" onClick={() => saveEdit(e.id)}>&#10003;</button>
-                  <button className="cancel-btn" onClick={cancelEdit}>&#10005;</button>
+                <td>
+                  <div className="row-actions">
+                    <button className="save-btn" onClick={() => saveEdit(e.id)}>&#10003;</button>
+                    <button className="cancel-btn" onClick={cancelEdit}>&#10005;</button>
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -459,9 +461,11 @@ function ExpenseList({ expenses, onDelete, onEdit }: ExpenseListProps) {
                   borderColor: `${CATEGORY_COLORS[e.category] ?? '#94a3b8'}44`,
                 }}>{e.category}</span></td>
                 <td className="amount-cell">{e.amount.toFixed(2)} kr</td>
-                <td className="row-actions">
-                  <button className="edit-btn" onClick={() => startEdit(e)}>&#9998;</button>
-                  <button className="delete-btn" onClick={() => onDelete(e.id)}>&#215;</button>
+                <td>
+                  <div className="row-actions">
+                    <button className="edit-btn" onClick={() => startEdit(e)}>&#9998;</button>
+                    <button className="delete-btn" onClick={() => onDelete(e.id)}>&#215;</button>
+                  </div>
                 </td>
               </tr>
             ))}
