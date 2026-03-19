@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts'
 import type { TooltipContentProps } from 'recharts'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabaseClient'
@@ -140,23 +140,43 @@ interface SpendingChartProps {
   data: ChartEntry[]
 }
 
+function formatYTick(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000 % 1 === 0 ? (value / 1_000_000).toFixed(0) : (value / 1_000_000).toFixed(1))}M`
+  if (value >= 1000) return `${(value / 1000 % 1 === 0 ? (value / 1000).toFixed(0) : (value / 1000).toFixed(1))}k`
+  return String(value)
+}
+
 function SpendingChart({ data }: SpendingChartProps) {
   const accentColor = useMemo(
     () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#aa3bff',
     []
   )
+  const maxValue = useMemo(() => Math.max(...data.map(d => d.total), 0), [data])
+  const yAxisWidth = useMemo(() => {
+    const label = formatYTick(maxValue)
+    return Math.max(label.length * 7 + 10, 32)
+  }, [maxValue])
+
   return (
     <div className="spending-chart card">
       <h2>Last 6 months</h2>
-      <ResponsiveContainer width="100%" height={180}>
-        <BarChart data={data} barCategoryGap="35%">
+      <ResponsiveContainer width="100%" height={190}>
+        <BarChart data={data} barCategoryGap="35%" margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
+          <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="4 4" />
           <XAxis
             dataKey="label"
             axisLine={false}
             tickLine={false}
             tick={{ fontSize: 13, fill: 'var(--text)' }}
           />
-          <YAxis hide width={0} />
+          <YAxis
+            tickFormatter={formatYTick}
+            axisLine={false}
+            tickLine={false}
+            tick={{ fontSize: 12, fill: 'var(--text)' }}
+            width={yAxisWidth}
+            tickCount={4}
+          />
           <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--accent-bg)' }} />
           <Bar dataKey="total" radius={[4, 4, 0, 0]}>
             {data.map((entry, i) => (
@@ -168,6 +188,95 @@ function SpendingChart({ data }: SpendingChartProps) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+    </div>
+  )
+}
+
+interface PieTooltipProps {
+  active?: boolean
+  payload?: ReadonlyArray<{ payload?: { name: string; value: number } }>
+  total: number
+}
+
+function PieTooltip({ active, payload, total }: PieTooltipProps) {
+  if (!active || !payload?.length || !payload[0].payload) return null
+  const { name, value } = payload[0].payload
+  const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0'
+  return (
+    <div className="chart-tooltip">
+      <p className="chart-tooltip-label">{name}</p>
+      <p className="chart-tooltip-value">{value.toFixed(2)} kr</p>
+      <p className="chart-tooltip-label">{pct}%</p>
+    </div>
+  )
+}
+
+interface CategoryPieChartProps {
+  expenses: Expense[]
+}
+
+function CategoryPieChart({ expenses }: CategoryPieChartProps) {
+  const data = useMemo(() => {
+    const byCategory = expenses.reduce<Record<string, number>>((acc, e) => {
+      acc[e.category] = (acc[e.category] ?? 0) + e.amount
+      return acc
+    }, {})
+    return Object.entries(byCategory)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value }))
+  }, [expenses])
+
+  const total = data.reduce((sum, d) => sum + d.value, 0)
+
+  return (
+    <div className="category-chart card">
+      <h2>By category</h2>
+      {data.length === 0 ? (
+        <p className="empty" style={{ marginTop: 16 }}>No expenses this month.</p>
+      ) : (
+        <>
+          <div className="donut-wrapper">
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie
+                  data={data}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={58}
+                  outerRadius={88}
+                  paddingAngle={2}
+                  dataKey="value"
+                  stroke="none"
+                  startAngle={90}
+                  endAngle={-270}
+                >
+                  {data.map((entry) => (
+                    <Cell key={entry.name} fill={CATEGORY_COLORS[entry.name] ?? '#94a3b8'} />
+                  ))}
+                </Pie>
+                <Tooltip content={(props) => <PieTooltip {...props} total={total} />} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="donut-center">
+              <span className="donut-total">
+                {total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total.toFixed(0)}
+              </span>
+              <span className="donut-unit">kr</span>
+            </div>
+          </div>
+          <div className="donut-legend">
+            {data.slice(0, 5).map(d => (
+              <div key={d.name} className="donut-legend-item">
+                <span className="donut-legend-dot" style={{ background: CATEGORY_COLORS[d.name] ?? '#94a3b8' }} />
+                <span className="donut-legend-name">{d.name}</span>
+                <span className="donut-legend-pct">
+                  {((d.value / total) * 100).toFixed(0)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -583,7 +692,10 @@ export default function App() {
         )}
       </div>
       <MonthNav currentMonth={currentMonth} onPrev={prevMonth} onNext={nextMonth} />
-      <SpendingChart data={chartData} />
+      <div className="charts-row">
+        <SpendingChart data={chartData} />
+        <CategoryPieChart expenses={monthExpenses} />
+      </div>
       <InsightsCard summary={insightsSummary} />
       <div className="layout">
         <aside>
