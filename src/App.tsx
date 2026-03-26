@@ -186,18 +186,39 @@ function Summary({ expenses, incomes, budgets, onSetBudget }: SummaryProps) {
   return (
     <div className="summary card">
       <h2>Summary</h2>
-      <div className="summary-totals">
-        <div className="summary-row">
-          <span>Income</span>
-          <span className="income-total">{totalIncome.toFixed(2)} kr</span>
+      <div className="stat-cards">
+        <div className="stat-card">
+          <div className="stat-card-icon stat-icon-income">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M2 10.5 5.5 7l3 3L14 4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M11 4h3v3" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <span className="stat-card-label">Income</span>
+          <span className="stat-card-value income-total">{totalIncome.toFixed(2)} kr</span>
         </div>
-        <div className="summary-row">
-          <span>Expenses</span>
-          <span className="total-amount">{totalExpenses.toFixed(2)} kr</span>
+        <div className="stat-card">
+          <div className="stat-card-icon stat-icon-expense">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M2 5.5 5.5 9l3-3L14 12" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M11 12h3V9" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <span className="stat-card-label">Expenses</span>
+          <span className="stat-card-value total-amount">{totalExpenses.toFixed(2)} kr</span>
         </div>
-        <div className="summary-row net-row">
-          <span>Net</span>
-          <span className={net >= 0 ? 'net-positive' : 'net-negative'}>
+        <div className="stat-card">
+          <div className={`stat-card-icon ${net >= 0 ? 'stat-icon-net-pos' : 'stat-icon-net-neg'}`}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5"/>
+              {net >= 0
+                ? <path d="M8 11V5M5.5 7.5L8 5l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                : <path d="M8 5v6M5.5 8.5L8 11l2.5-2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              }
+            </svg>
+          </div>
+          <span className="stat-card-label">Net</span>
+          <span className={`stat-card-value ${net >= 0 ? 'net-positive' : 'net-negative'}`}>
             {net >= 0 ? '+' : ''}{net.toFixed(2)} kr
           </span>
         </div>
@@ -386,119 +407,86 @@ function CategoryPieChart({ expenses }: CategoryPieChartProps) {
   )
 }
 
-interface AddExpenseFormProps {
-  onAdd: (expense: Omit<Expense, 'id' | 'user_id' | 'created_at'>) => void
+type MobileTab = 'overview' | 'expenses' | 'income' | 'budgets'
+type EntryMode = 'expense' | 'income'
+
+interface AddEntryFormProps {
+  onAddExpense: (expense: Omit<Expense, 'id' | 'user_id' | 'created_at'>) => void
+  onAddIncome: (income: Omit<Income, 'id' | 'user_id' | 'created_at'>) => void
   defaultDate: string
+  activeTab: MobileTab
 }
 
-function AddExpenseForm({ onAdd, defaultDate }: AddExpenseFormProps) {
-  const [form, setForm] = useState({
-    date: defaultDate,
-    description: '',
-    category: CATEGORIES[0],
-    amount: '',
-  })
+function AddEntryForm({ onAddExpense, onAddIncome, defaultDate, activeTab }: AddEntryFormProps) {
+  const [mode, setMode] = useState<EntryMode>(activeTab === 'income' ? 'income' : 'expense')
+  const [expenseForm, setExpenseForm] = useState({ date: defaultDate, description: '', category: CATEGORIES[0], amount: '' })
+  const [incomeForm, setIncomeForm] = useState({ date: defaultDate, description: '', source: INCOME_SOURCES[0], amount: '' })
 
-  function set(field: string, value: string) {
-    setForm(f => ({ ...f, [field]: value }))
-  }
+  useEffect(() => {
+    if (activeTab === 'income') setMode('income')
+    else if (activeTab === 'expenses') setMode('expense')
+  }, [activeTab])
+
+  const isIncome = mode === 'income'
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    const amount = parseFloat(form.amount)
-    if (!form.date || !form.description || isNaN(amount) || amount <= 0) return
-    onAdd({ ...form, amount })
-    setForm({ date: defaultDate, description: '', category: CATEGORIES[0], amount: '' })
+    if (isIncome) {
+      const amount = parseFloat(incomeForm.amount)
+      if (!incomeForm.date || !incomeForm.description || isNaN(amount) || amount <= 0) return
+      onAddIncome({ ...incomeForm, amount })
+      setIncomeForm({ date: defaultDate, description: '', source: INCOME_SOURCES[0], amount: '' })
+    } else {
+      const amount = parseFloat(expenseForm.amount)
+      if (!expenseForm.date || !expenseForm.description || isNaN(amount) || amount <= 0) return
+      onAddExpense({ ...expenseForm, amount })
+      setExpenseForm({ date: defaultDate, description: '', category: CATEGORIES[0], amount: '' })
+    }
   }
 
   return (
     <form className="add-form card" onSubmit={handleSubmit}>
-      <h2>Add Expense</h2>
-      <div className="form-grid">
-        <label>
-          Date
-          <input type="date" value={form.date} onChange={e => set('date', e.target.value)} required />
-        </label>
-        <label>
-          Category
-          <select value={form.category} onChange={e => set('category', e.target.value)}>
-            {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-          </select>
-        </label>
-        <label>
-          Description
-          <input
-            type="text"
-            placeholder="e.g. Groceries"
-            value={form.description}
-            onChange={e => set('description', e.target.value)}
-            required
-          />
-        </label>
-        <label>
-          Amount (kr)
-          <input
-            type="number"
-            min="0.01"
-            step="0.01"
-            placeholder="0.00"
-            value={form.amount}
-            onChange={e => set('amount', e.target.value)}
-            required
-          />
-        </label>
-        <button type="submit" className="add-btn">Add Expense</button>
+      <div className="form-toggle">
+        <button type="button" className={`toggle-btn${!isIncome ? ' toggle-active toggle-expense' : ''}`} onClick={() => setMode('expense')}>
+          Expense
+        </button>
+        <button type="button" className={`toggle-btn${isIncome ? ' toggle-active toggle-income' : ''}`} onClick={() => setMode('income')}>
+          Income
+        </button>
       </div>
-    </form>
-  )
-}
-
-interface AddIncomeFormProps {
-  onAdd: (income: Omit<Income, 'id' | 'user_id' | 'created_at'>) => void
-  defaultDate: string
-}
-
-function AddIncomeForm({ onAdd, defaultDate }: AddIncomeFormProps) {
-  const [form, setForm] = useState({
-    date: defaultDate,
-    description: '',
-    source: INCOME_SOURCES[0],
-    amount: '',
-  })
-
-  function set(field: string, value: string) {
-    setForm(f => ({ ...f, [field]: value }))
-  }
-
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    const amount = parseFloat(form.amount)
-    if (!form.date || !form.description || isNaN(amount) || amount <= 0) return
-    onAdd({ ...form, amount })
-    setForm({ date: defaultDate, description: '', source: INCOME_SOURCES[0], amount: '' })
-  }
-
-  return (
-    <form className="add-form card" onSubmit={handleSubmit}>
-      <h2>Add Income</h2>
       <div className="form-grid">
         <label>
           Date
-          <input type="date" value={form.date} onChange={e => set('date', e.target.value)} required />
+          <input
+            type="date"
+            value={isIncome ? incomeForm.date : expenseForm.date}
+            onChange={e => isIncome
+              ? setIncomeForm(f => ({ ...f, date: e.target.value }))
+              : setExpenseForm(f => ({ ...f, date: e.target.value }))}
+            required
+          />
         </label>
         <label>
-          Source
-          <select value={form.source} onChange={e => set('source', e.target.value)}>
-            {INCOME_SOURCES.map(s => <option key={s}>{s}</option>)}
-          </select>
+          {isIncome ? 'Source' : 'Category'}
+          {isIncome ? (
+            <select value={incomeForm.source} onChange={e => setIncomeForm(f => ({ ...f, source: e.target.value }))}>
+              {INCOME_SOURCES.map(s => <option key={s}>{s}</option>)}
+            </select>
+          ) : (
+            <select value={expenseForm.category} onChange={e => setExpenseForm(f => ({ ...f, category: e.target.value }))}>
+              {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            </select>
+          )}
         </label>
         <label>
           Description
           <input
             type="text"
-            placeholder="e.g. Monthly salary"
-            value={form.description}
-            onChange={e => set('description', e.target.value)}
+            placeholder={isIncome ? 'e.g. Monthly salary' : 'e.g. Groceries'}
+            value={isIncome ? incomeForm.description : expenseForm.description}
+            onChange={e => isIncome
+              ? setIncomeForm(f => ({ ...f, description: e.target.value }))
+              : setExpenseForm(f => ({ ...f, description: e.target.value }))}
             required
           />
         </label>
@@ -509,12 +497,16 @@ function AddIncomeForm({ onAdd, defaultDate }: AddIncomeFormProps) {
             min="0.01"
             step="0.01"
             placeholder="0.00"
-            value={form.amount}
-            onChange={e => set('amount', e.target.value)}
+            value={isIncome ? incomeForm.amount : expenseForm.amount}
+            onChange={e => isIncome
+              ? setIncomeForm(f => ({ ...f, amount: e.target.value }))
+              : setExpenseForm(f => ({ ...f, amount: e.target.value }))}
             required
           />
         </label>
-        <button type="submit" className="add-btn add-income-btn">Add Income</button>
+        <button type="submit" className={`add-btn${isIncome ? ' add-income-btn' : ''}`}>
+          {isIncome ? 'Add Income' : 'Add Expense'}
+        </button>
       </div>
     </form>
   )
@@ -583,7 +575,32 @@ function ExpenseList({ expenses, onDelete, onEdit }: ExpenseListProps) {
         </select>
       </div>
       {filtered.length === 0 ? (
-        <p className="empty">{expenses.length === 0 ? 'No expenses this month.' : 'No matching expenses.'}</p>
+        <div className="empty-state">
+          {expenses.length === 0 ? (
+            <>
+              <div className="empty-state-icon">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+                  <path d="M7 4h14v20l-3.5-2L14 24l-3.5-2L7 24V4z" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round"/>
+                  <path d="M10.5 11h7M10.5 15h5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"/>
+                </svg>
+              </div>
+              <p className="empty-state-title">No expenses yet</p>
+              <p className="empty-state-sub">Add your first expense using the form above</p>
+            </>
+          ) : (
+            <>
+              <div className="empty-state-icon">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.75"/>
+                  <path d="M18.5 18.5L24 24" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"/>
+                  <path d="M9 12h6" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"/>
+                </svg>
+              </div>
+              <p className="empty-state-title">No matching expenses</p>
+              <p className="empty-state-sub">Try adjusting your search or filter</p>
+            </>
+          )}
+        </div>
       ) : (
         <table>
           <thead>
@@ -711,7 +728,33 @@ function IncomeList({ incomes, onDelete, onEdit }: IncomeListProps) {
         </select>
       </div>
       {filtered.length === 0 ? (
-        <p className="empty">{incomes.length === 0 ? 'No income this month.' : 'No matching income.'}</p>
+        <div className="empty-state">
+          {incomes.length === 0 ? (
+            <>
+              <div className="empty-state-icon">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+                  <rect x="3" y="8" width="22" height="14" rx="3" stroke="currentColor" strokeWidth="1.75"/>
+                  <path d="M3 13h22" stroke="currentColor" strokeWidth="1.75"/>
+                  <circle cx="21" cy="18" r="1.5" fill="currentColor"/>
+                </svg>
+              </div>
+              <p className="empty-state-title">No income yet</p>
+              <p className="empty-state-sub">Add your first income entry using the form above</p>
+            </>
+          ) : (
+            <>
+              <div className="empty-state-icon">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.75"/>
+                  <path d="M18.5 18.5L24 24" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"/>
+                  <path d="M9 12h6" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"/>
+                </svg>
+              </div>
+              <p className="empty-state-title">No matching income</p>
+              <p className="empty-state-sub">Try adjusting your search or filter</p>
+            </>
+          )}
+        </div>
       ) : (
         <table>
           <thead>
@@ -1086,21 +1129,38 @@ function BudgetsSection({ expenses, monthIncomes, budgets, onSetBudget, currentM
   )
 }
 
-type MobileTab = 'overview' | 'expenses' | 'income' | 'budgets'
-
 function MobileTabBar({ active, onChange }: { active: MobileTab; onChange: (t: MobileTab) => void }) {
   return (
     <nav className="tab-bar">
       <button className={`tab-btn${active === 'overview' ? ' tab-active' : ''}`} onClick={() => onChange('overview')}>
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <rect x="1" y="10" width="4" height="7" rx="1" fill="currentColor"/>
+          <rect x="7" y="6" width="4" height="11" rx="1" fill="currentColor"/>
+          <rect x="13" y="2" width="4" height="15" rx="1" fill="currentColor"/>
+        </svg>
         Overview
       </button>
       <button className={`tab-btn${active === 'expenses' ? ' tab-active' : ''}`} onClick={() => onChange('expenses')}>
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <path d="M4 2h10v14l-2.5-1.5L9 16l-2.5-1.5L4 16V2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+          <path d="M6.5 7h5M6.5 10h3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
         Expenses
       </button>
       <button className={`tab-btn${active === 'income' ? ' tab-active' : ''}`} onClick={() => onChange('income')}>
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <rect x="2" y="6" width="14" height="9" rx="2.5" stroke="currentColor" strokeWidth="1.5"/>
+          <path d="M2 10h14" stroke="currentColor" strokeWidth="1.5"/>
+          <circle cx="13.5" cy="12.5" r="1" fill="currentColor"/>
+        </svg>
         Income
       </button>
       <button className={`tab-btn${active === 'budgets' ? ' tab-active' : ''}`} onClick={() => onChange('budgets')}>
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <circle cx="9" cy="9" r="7" stroke="currentColor" strokeWidth="1.5"/>
+          <circle cx="9" cy="9" r="3.5" stroke="currentColor" strokeWidth="1.5"/>
+          <circle cx="9" cy="9" r="1" fill="currentColor"/>
+        </svg>
         Budgets
       </button>
     </nav>
@@ -1355,12 +1415,18 @@ export default function App() {
           />
         </aside>
         <main>
+          <div className={activeTab !== 'expenses' && activeTab !== 'income' ? 'mobile-hidden' : ''}>
+            <AddEntryForm
+              onAddExpense={handleAddExpense}
+              onAddIncome={handleAddIncome}
+              defaultDate={defaultDate}
+              activeTab={activeTab}
+            />
+          </div>
           <div className={`tab-section${activeTab !== 'expenses' ? ' mobile-hidden' : ''}`}>
-            <AddExpenseForm onAdd={handleAddExpense} defaultDate={defaultDate} />
             <ExpenseList expenses={monthExpenses} onDelete={handleDeleteExpense} onEdit={handleEditExpense} />
           </div>
           <div className={`tab-section${activeTab !== 'income' ? ' mobile-hidden' : ''}`}>
-            <AddIncomeForm onAdd={handleAddIncome} defaultDate={defaultDate} />
             <IncomeList incomes={monthIncomes} onDelete={handleDeleteIncome} onEdit={handleEditIncome} />
           </div>
         </main>
