@@ -19,6 +19,16 @@ interface Expense {
   created_at?: string
 }
 
+interface Income {
+  id: string
+  date: string
+  description: string
+  source: string
+  amount: number
+  user_id?: string
+  created_at?: string
+}
+
 interface MonthState {
   year: number
   month: number
@@ -26,7 +36,8 @@ interface MonthState {
 
 interface ChartEntry {
   label: string
-  total: number
+  expenses: number
+  income: number
   isCurrent: boolean
 }
 
@@ -43,6 +54,17 @@ const CATEGORY_COLORS: Record<string, string> = {
   Clothes:       '#f59e0b',
   Shopping:      '#ef4444',
   Other:         '#94a3b8',
+}
+
+const INCOME_SOURCES = ['Salary', 'Freelance', 'Investment', 'Gift', 'Rental', 'Other']
+
+const INCOME_SOURCE_COLORS: Record<string, string> = {
+  Salary:     '#10b981',
+  Freelance:  '#0ea5e9',
+  Investment: '#f59e0b',
+  Gift:       '#ec4899',
+  Rental:     '#a78bfa',
+  Other:      '#94a3b8',
 }
 
 interface MonthNavProps {
@@ -92,10 +114,13 @@ function CategoryBar({ category, amount, max, color }: CategoryBarProps) {
 
 interface SummaryProps {
   expenses: Expense[]
+  incomes: Income[]
 }
 
-function Summary({ expenses }: SummaryProps) {
-  const total = expenses.reduce((sum, e) => sum + e.amount, 0)
+function Summary({ expenses, incomes }: SummaryProps) {
+  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0)
+  const totalIncome = incomes.reduce((sum, i) => sum + i.amount, 0)
+  const net = totalIncome - totalExpenses
 
   const byCategory = expenses.reduce<Record<string, number>>((acc, e) => {
     acc[e.category] = (acc[e.category] ?? 0) + e.amount
@@ -108,9 +133,21 @@ function Summary({ expenses }: SummaryProps) {
   return (
     <div className="summary card">
       <h2>Summary</h2>
-      <div className="total">
-        <span>Total spent</span>
-        <span className="total-amount">{total.toFixed(2)} kr</span>
+      <div className="summary-totals">
+        <div className="summary-row">
+          <span>Income</span>
+          <span className="income-total">{totalIncome.toFixed(2)} kr</span>
+        </div>
+        <div className="summary-row">
+          <span>Expenses</span>
+          <span className="total-amount">{totalExpenses.toFixed(2)} kr</span>
+        </div>
+        <div className="summary-row net-row">
+          <span>Net</span>
+          <span className={net >= 0 ? 'net-positive' : 'net-negative'}>
+            {net >= 0 ? '+' : ''}{net.toFixed(2)} kr
+          </span>
+        </div>
       </div>
       <div className="categories">
         {sorted.length === 0 ? (
@@ -127,11 +164,16 @@ function Summary({ expenses }: SummaryProps) {
 
 function ChartTooltip({ active, payload, label }: Partial<TooltipContentProps>) {
   if (!active || !payload?.length) return null
-  const value = typeof payload[0].value === 'number' ? payload[0].value : 0
   return (
     <div className="chart-tooltip">
       <p className="chart-tooltip-label">{label}</p>
-      <p className="chart-tooltip-value">{value.toFixed(2)} kr</p>
+      {payload.map((p, i) => (
+        typeof p.value === 'number' ? (
+          <p key={i} className="chart-tooltip-value" style={{ color: p.name === 'income' ? '#10b981' : undefined }}>
+            {p.name === 'income' ? 'Income' : 'Expenses'}: {p.value.toFixed(2)} kr
+          </p>
+        ) : null
+      ))}
     </div>
   )
 }
@@ -151,7 +193,7 @@ function SpendingChart({ data }: SpendingChartProps) {
     () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#aa3bff',
     []
   )
-  const maxValue = useMemo(() => Math.max(...data.map(d => d.total), 0), [data])
+  const maxValue = useMemo(() => Math.max(...data.map(d => Math.max(d.expenses, d.income)), 0), [data])
   const yAxisWidth = useMemo(() => {
     const label = formatYTick(maxValue)
     return Math.max(label.length * 7 + 10, 32)
@@ -161,7 +203,7 @@ function SpendingChart({ data }: SpendingChartProps) {
     <div className="spending-chart card">
       <h2>Last 6 months</h2>
       <ResponsiveContainer width="100%" height={190}>
-        <BarChart data={data} barCategoryGap="35%" margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
+        <BarChart data={data} barCategoryGap="30%" barGap={3} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
           <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="4 4" />
           <XAxis
             dataKey="label"
@@ -178,12 +220,14 @@ function SpendingChart({ data }: SpendingChartProps) {
             tickCount={4}
           />
           <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--accent-bg)' }} />
-          <Bar dataKey="total" radius={[4, 4, 0, 0]}>
+          <Bar dataKey="income" name="income" radius={[4, 4, 0, 0]}>
             {data.map((entry, i) => (
-              <Cell
-                key={i}
-                fill={entry.isCurrent ? accentColor : `${accentColor}55`}
-              />
+              <Cell key={i} fill={entry.isCurrent ? '#10b981' : '#10b98155'} />
+            ))}
+          </Bar>
+          <Bar dataKey="expenses" name="expenses" radius={[4, 4, 0, 0]}>
+            {data.map((entry, i) => (
+              <Cell key={i} fill={entry.isCurrent ? accentColor : `${accentColor}55`} />
             ))}
           </Bar>
         </BarChart>
@@ -348,6 +392,73 @@ function AddExpenseForm({ onAdd, defaultDate }: AddExpenseFormProps) {
   )
 }
 
+interface AddIncomeFormProps {
+  onAdd: (income: Omit<Income, 'id' | 'user_id' | 'created_at'>) => void
+  defaultDate: string
+}
+
+function AddIncomeForm({ onAdd, defaultDate }: AddIncomeFormProps) {
+  const [form, setForm] = useState({
+    date: defaultDate,
+    description: '',
+    source: INCOME_SOURCES[0],
+    amount: '',
+  })
+
+  function set(field: string, value: string) {
+    setForm(f => ({ ...f, [field]: value }))
+  }
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const amount = parseFloat(form.amount)
+    if (!form.date || !form.description || isNaN(amount) || amount <= 0) return
+    onAdd({ ...form, amount })
+    setForm({ date: defaultDate, description: '', source: INCOME_SOURCES[0], amount: '' })
+  }
+
+  return (
+    <form className="add-form card" onSubmit={handleSubmit}>
+      <h2>Add Income</h2>
+      <div className="form-grid">
+        <label>
+          Date
+          <input type="date" value={form.date} onChange={e => set('date', e.target.value)} required />
+        </label>
+        <label>
+          Source
+          <select value={form.source} onChange={e => set('source', e.target.value)}>
+            {INCOME_SOURCES.map(s => <option key={s}>{s}</option>)}
+          </select>
+        </label>
+        <label>
+          Description
+          <input
+            type="text"
+            placeholder="e.g. Monthly salary"
+            value={form.description}
+            onChange={e => set('description', e.target.value)}
+            required
+          />
+        </label>
+        <label>
+          Amount (kr)
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            placeholder="0.00"
+            value={form.amount}
+            onChange={e => set('amount', e.target.value)}
+            required
+          />
+        </label>
+        <button type="submit" className="add-btn add-income-btn">Add Income</button>
+      </div>
+    </form>
+  )
+}
+
 interface ExpenseListProps {
   expenses: Expense[]
   onDelete: (id: string) => void
@@ -476,6 +587,134 @@ function ExpenseList({ expenses, onDelete, onEdit }: ExpenseListProps) {
   )
 }
 
+interface IncomeListProps {
+  incomes: Income[]
+  onDelete: (id: string) => void
+  onEdit: (id: string, updates: Omit<Income, 'id' | 'user_id' | 'created_at'>) => void
+}
+
+type IncomeEditDraft = {
+  date: string
+  description: string
+  source: string
+  amount: string | number
+}
+
+function IncomeList({ incomes, onDelete, onEdit }: IncomeListProps) {
+  const [search, setSearch] = useState('')
+  const [filterSource, setFilterSource] = useState('All')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState<IncomeEditDraft>({ date: '', description: '', source: '', amount: '' })
+
+  function startEdit(inc: Income) {
+    setEditingId(inc.id)
+    setEditDraft({ date: inc.date, description: inc.description, source: inc.source, amount: inc.amount })
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditDraft({ date: '', description: '', source: '', amount: '' })
+  }
+
+  function saveEdit(id: string) {
+    const amount = parseFloat(String(editDraft.amount))
+    if (!editDraft.date || !editDraft.description || isNaN(amount) || amount <= 0) return
+    onEdit(id, { date: editDraft.date, description: editDraft.description, source: editDraft.source, amount })
+    setEditingId(null)
+    setEditDraft({ date: '', description: '', source: '', amount: '' })
+  }
+
+  const filtered = [...incomes]
+    .filter(inc => filterSource === 'All' || inc.source === filterSource)
+    .filter(inc => inc.description.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  return (
+    <div className="expense-list income-list card">
+      <h2>Income</h2>
+      <div className="list-filters">
+        <input
+          type="search"
+          className="filter-search"
+          placeholder="Search descriptions…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <select
+          className="filter-category"
+          value={filterSource}
+          onChange={e => setFilterSource(e.target.value)}
+        >
+          <option value="All">All sources</option>
+          {INCOME_SOURCES.map(s => <option key={s}>{s}</option>)}
+        </select>
+      </div>
+      {filtered.length === 0 ? (
+        <p className="empty">{incomes.length === 0 ? 'No income this month.' : 'No matching income.'}</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Description</th>
+              <th>Source</th>
+              <th>Amount</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(inc => editingId === inc.id ? (
+              <tr key={inc.id} className="editing-row">
+                <td>
+                  <input type="date" value={editDraft.date}
+                    onChange={ev => setEditDraft(d => ({ ...d, date: ev.target.value }))} />
+                </td>
+                <td>
+                  <input type="text" value={editDraft.description}
+                    onChange={ev => setEditDraft(d => ({ ...d, description: ev.target.value }))} />
+                </td>
+                <td>
+                  <select value={editDraft.source}
+                    onChange={ev => setEditDraft(d => ({ ...d, source: ev.target.value }))}>
+                    {INCOME_SOURCES.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </td>
+                <td>
+                  <input type="number" min="0.01" step="0.01" value={String(editDraft.amount)}
+                    onChange={ev => setEditDraft(d => ({ ...d, amount: ev.target.value }))} />
+                </td>
+                <td>
+                  <div className="row-actions">
+                    <button className="save-btn" onClick={() => saveEdit(inc.id)}>&#10003;</button>
+                    <button className="cancel-btn" onClick={cancelEdit}>&#10005;</button>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              <tr key={inc.id}>
+                <td>{new Date(inc.date + 'T00:00:00').toLocaleDateString('default', { month: 'short', day: 'numeric' })}</td>
+                <td>{inc.description}</td>
+                <td><span className="badge" style={{
+                  color: INCOME_SOURCE_COLORS[inc.source] ?? '#94a3b8',
+                  background: `${INCOME_SOURCE_COLORS[inc.source] ?? '#94a3b8'}18`,
+                  borderColor: `${INCOME_SOURCE_COLORS[inc.source] ?? '#94a3b8'}44`,
+                }}>{inc.source}</span></td>
+                <td className="amount-cell income-amount">{inc.amount.toFixed(2)} kr</td>
+                <td>
+                  <div className="row-actions">
+                    <button className="edit-btn" onClick={() => startEdit(inc)}>&#9998;</button>
+                    <button className="delete-btn" onClick={() => onDelete(inc.id)}>&#215;</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
 interface InsightsCardProps {
   summary: ExpenseSummary
 }
@@ -543,6 +782,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true)
   const [guestMode, setGuestMode] = useState(false)
   const [expenses, setExpenses] = useState<Expense[]>([])
+  const [incomes, setIncomes] = useState<Income[]>([])
   const [currentMonth, setCurrentMonth] = useState<MonthState>(() => {
     const now = new Date()
     return { year: now.getFullYear(), month: now.getMonth() }
@@ -562,9 +802,15 @@ export default function App() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      if (guestMode || !session) { setExpenses([]); return }
-      const { data, error } = await supabase.from('expenses').select('*')
-      if (!cancelled && !error) setExpenses(data ?? [])
+      if (guestMode || !session) { setExpenses([]); setIncomes([]); return }
+      const [expensesRes, incomesRes] = await Promise.all([
+        supabase.from('expenses').select('*'),
+        supabase.from('incomes').select('*'),
+      ])
+      if (!cancelled) {
+        if (!expensesRes.error) setExpenses(expensesRes.data ?? [])
+        if (!incomesRes.error) setIncomes(incomesRes.data ?? [])
+      }
     })()
     return () => { cancelled = true }
   }, [session, guestMode])
@@ -583,7 +829,7 @@ export default function App() {
     })
   }
 
-  async function handleAdd(expense: Omit<Expense, 'id' | 'user_id' | 'created_at'>) {
+  async function handleAddExpense(expense: Omit<Expense, 'id' | 'user_id' | 'created_at'>) {
     if (guestMode) {
       setExpenses(prev => [...prev, { ...expense, id: crypto.randomUUID() }])
       const d = new Date(expense.date + 'T00:00:00')
@@ -601,7 +847,25 @@ export default function App() {
     setCurrentMonth({ year: d.getFullYear(), month: d.getMonth() })
   }
 
-  async function handleDelete(id: string) {
+  async function handleAddIncome(income: Omit<Income, 'id' | 'user_id' | 'created_at'>) {
+    if (guestMode) {
+      setIncomes(prev => [...prev, { ...income, id: crypto.randomUUID() }])
+      const d = new Date(income.date + 'T00:00:00')
+      setCurrentMonth({ year: d.getFullYear(), month: d.getMonth() })
+      return
+    }
+    const { data, error } = await supabase
+      .from('incomes')
+      .insert({ ...income, user_id: session!.user.id })
+      .select()
+      .single()
+    if (error) { console.error(error); return }
+    setIncomes(prev => [...prev, data])
+    const d = new Date(income.date + 'T00:00:00')
+    setCurrentMonth({ year: d.getFullYear(), month: d.getMonth() })
+  }
+
+  async function handleDeleteExpense(id: string) {
     if (guestMode) {
       setExpenses(prev => prev.filter(e => e.id !== id))
       return
@@ -611,7 +875,17 @@ export default function App() {
     setExpenses(prev => prev.filter(e => e.id !== id))
   }
 
-  async function handleEdit(id: string, updates: Omit<Expense, 'id' | 'user_id' | 'created_at'>) {
+  async function handleDeleteIncome(id: string) {
+    if (guestMode) {
+      setIncomes(prev => prev.filter(i => i.id !== id))
+      return
+    }
+    const { error } = await supabase.from('incomes').delete().eq('id', id)
+    if (error) { console.error(error); return }
+    setIncomes(prev => prev.filter(i => i.id !== id))
+  }
+
+  async function handleEditExpense(id: string, updates: Omit<Expense, 'id' | 'user_id' | 'created_at'>) {
     if (guestMode) {
       setExpenses(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e))
       return
@@ -626,8 +900,28 @@ export default function App() {
     setExpenses(prev => prev.map(e => e.id === id ? data : e))
   }
 
+  async function handleEditIncome(id: string, updates: Omit<Income, 'id' | 'user_id' | 'created_at'>) {
+    if (guestMode) {
+      setIncomes(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i))
+      return
+    }
+    const { data, error } = await supabase
+      .from('incomes')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single()
+    if (error) { console.error(error); return }
+    setIncomes(prev => prev.map(i => i.id === id ? data : i))
+  }
+
   const monthExpenses = expenses.filter(e => {
     const d = new Date(e.date + 'T00:00:00')
+    return d.getFullYear() === currentMonth.year && d.getMonth() === currentMonth.month
+  })
+
+  const monthIncomes = incomes.filter(i => {
+    const d = new Date(i.date + 'T00:00:00')
     return d.getFullYear() === currentMonth.year && d.getMonth() === currentMonth.month
   })
 
@@ -638,16 +932,22 @@ export default function App() {
       const year = d.getFullYear()
       const month = d.getMonth()
       const label = d.toLocaleString('default', { month: 'short' })
-      const total = expenses
+      const expensesTotal = expenses
         .filter(e => {
           const ed = new Date(e.date + 'T00:00:00')
           return ed.getFullYear() === year && ed.getMonth() === month
         })
         .reduce((sum, e) => sum + e.amount, 0)
+      const incomeTotal = incomes
+        .filter(inc => {
+          const id = new Date(inc.date + 'T00:00:00')
+          return id.getFullYear() === year && id.getMonth() === month
+        })
+        .reduce((sum, inc) => sum + inc.amount, 0)
       const isCurrent = year === now.getFullYear() && month === now.getMonth()
-      return { label, total, isCurrent }
+      return { label, expenses: expensesTotal, income: incomeTotal, isCurrent }
     })
-  }, [expenses])
+  }, [expenses, incomes])
 
   const defaultDate = new Date(currentMonth.year, currentMonth.month, new Date().getDate())
     .toISOString().split('T')[0]
@@ -671,7 +971,7 @@ export default function App() {
         byCategory,
         count: currentMonthExpenses.length,
       },
-      lastSixMonths: chartData.map(m => ({ label: m.label, total: m.total })),
+      lastSixMonths: chartData.map(m => ({ label: m.label, total: m.expenses })),
     }
   }, [expenses, chartData])
 
@@ -703,11 +1003,13 @@ export default function App() {
       <InsightsCard summary={insightsSummary} />
       <div className="layout">
         <aside>
-          <Summary expenses={monthExpenses} />
+          <Summary expenses={monthExpenses} incomes={monthIncomes} />
         </aside>
         <main>
-          <AddExpenseForm onAdd={handleAdd} defaultDate={defaultDate} />
-          <ExpenseList expenses={monthExpenses} onDelete={handleDelete} onEdit={handleEdit} />
+          <AddExpenseForm onAdd={handleAddExpense} defaultDate={defaultDate} />
+          <ExpenseList expenses={monthExpenses} onDelete={handleDeleteExpense} onEdit={handleEditExpense} />
+          <AddIncomeForm onAdd={handleAddIncome} defaultDate={defaultDate} />
+          <IncomeList incomes={monthIncomes} onDelete={handleDeleteIncome} onEdit={handleEditIncome} />
         </main>
       </div>
     </div>
