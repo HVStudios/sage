@@ -2,8 +2,8 @@ const CACHE_NAME = 'friendly-broccoli-v1';
 
 // App shell assets to cache on install
 const PRECACHE_ASSETS = [
-  '/friendly-broccoli/',
-  '/friendly-broccoli/index.html',
+  '/sage/',
+  '/sage/index.html',
 ];
 
 // Install: pre-cache the app shell
@@ -69,7 +69,7 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request).catch(() =>
-        caches.match('/friendly-broccoli/index.html')
+        caches.match('/sage/index.html')
       )
     );
     return;
