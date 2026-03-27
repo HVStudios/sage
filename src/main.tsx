@@ -6,7 +6,7 @@ import App from './App.tsx'
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/friendly-broccoli/sw.js')
+      .register('/sage/sw.js')
       .catch((err) => console.warn('Service worker registration failed:', err))
   })
 }
