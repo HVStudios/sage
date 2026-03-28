@@ -95,7 +95,7 @@ function MonthNav({ currentMonth, onPrev, onNext }: MonthNavProps) {
   return (
     <div className="month-nav card">
       <button onClick={onPrev}>&#8592;</button>
-      <h1>{label}</h1>
+      <h1 key={label}>{label}</h1>
       <button onClick={onNext}>&#8594;</button>
     </div>
   )
@@ -176,6 +176,32 @@ function CategoryBar({ category, amount, max, color, budget, onSetBudget }: Cate
   )
 }
 
+function useCountUp(target: number, duration = 550): number {
+  const [value, setValue] = useState(target)
+  const startRef = useRef(target)
+  const prevTarget = useRef(target)
+
+  useEffect(() => {
+    if (target === prevTarget.current) return
+    const from = startRef.current
+    prevTarget.current = target
+    const startTime = performance.now()
+    let raf: number
+
+    function tick(now: number) {
+      const t = Math.min((now - startTime) / duration, 1)
+      const eased = 1 - Math.pow(1 - t, 3)
+      setValue(from + (target - from) * eased)
+      if (t < 1) raf = requestAnimationFrame(tick)
+      else startRef.current = target
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [target, duration])
+
+  return value
+}
+
 function BalanceCard({ totalIncome, totalExpenses }: { totalIncome: number; totalExpenses: number }) {
   const remaining = totalIncome - totalExpenses
   const pct = totalIncome > 0 ? Math.min((totalExpenses / totalIncome) * 100, 100) : 0
@@ -183,18 +209,29 @@ function BalanceCard({ totalIncome, totalExpenses }: { totalIncome: number; tota
   const isWarning = !isOver && pct >= 80
   const barColor = isOver ? '#ef4444' : isWarning ? '#f59e0b' : '#4f7c62'
 
+  const [barPct, setBarPct] = useState(0)
+  useEffect(() => {
+    let raf1: number, raf2: number
+    raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => setBarPct(pct)) })
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2) }
+  }, [pct])
+
+  const animRemaining = useCountUp(Math.abs(remaining))
+  const animExpenses = useCountUp(totalExpenses)
+  const animIncome = useCountUp(totalIncome)
+
   return (
     <div className="balance-card card">
       <span className="balance-label">Remaining this month</span>
       <span className={`balance-amount${isOver ? ' balance-over' : ''}`}>
-        {isOver ? '−' : ''}{Math.abs(remaining).toFixed(0)} kr
+        {isOver ? '−' : ''}{animRemaining.toFixed(0)} kr
       </span>
       <div className="balance-bar-track">
-        <div className="balance-bar-fill" style={{ width: `${pct.toFixed(1)}%`, background: barColor }} />
+        <div className="balance-bar-fill" style={{ width: `${barPct.toFixed(1)}%`, background: barColor }} />
       </div>
       <div className="balance-meta">
-        <span>{totalExpenses.toFixed(0)} kr spent</span>
-        <span>{totalIncome.toFixed(0)} kr income</span>
+        <span>{animExpenses.toFixed(0)} kr spent</span>
+        <span>{animIncome.toFixed(0)} kr income</span>
       </div>
     </div>
   )
@@ -906,7 +943,7 @@ function ExpenseList({ expenses, onDelete, onEdit }: ExpenseListProps) {
             </tr>
           </thead>
           <tbody>
-            {filtered.map(e => editingId === e.id ? (
+            {filtered.map((e, idx) => editingId === e.id ? (
               <tr key={e.id} className="editing-row">
                 <td>
                   <input type="date" value={editDraft.date}
@@ -947,6 +984,7 @@ function ExpenseList({ expenses, onDelete, onEdit }: ExpenseListProps) {
               <tr
                 key={e.id}
                 className={swipedId === e.id ? 'row-swiped' : swipedEditId === e.id ? 'row-swiped-edit' : ''}
+                style={{ animationDelay: `${Math.min(idx, 12) * 0.04}s` }}
                 onTouchStart={ev => onTouchStart(e.id, ev.touches[0].clientX)}
                 onTouchMove={ev => onTouchMove(ev.touches[0].clientX)}
                 onTouchEnd={onTouchEnd}
@@ -1113,7 +1151,7 @@ function IncomeList({ incomes, onDelete, onEdit }: IncomeListProps) {
             </tr>
           </thead>
           <tbody>
-            {filtered.map(inc => editingId === inc.id ? (
+            {filtered.map((inc, idx) => editingId === inc.id ? (
               <tr key={inc.id} className="editing-row">
                 <td>
                   <input type="date" value={editDraft.date}
@@ -1144,6 +1182,7 @@ function IncomeList({ incomes, onDelete, onEdit }: IncomeListProps) {
               <tr
                 key={inc.id}
                 className={swipedId === inc.id ? 'row-swiped' : swipedEditId === inc.id ? 'row-swiped-edit' : ''}
+                style={{ animationDelay: `${Math.min(idx, 12) * 0.04}s` }}
                 onTouchStart={ev => onTouchStart(inc.id, ev.touches[0].clientX)}
                 onTouchMove={ev => onTouchMove(ev.touches[0].clientX)}
                 onTouchEnd={onTouchEnd}
@@ -2358,6 +2397,9 @@ export default function App() {
   const totalMonthExpenses = monthExpenses.reduce((s, e) => s + e.amount, 0)
   const totalMonthIncome = monthIncomes.reduce((s, i) => s + i.amount, 0)
   const netSavings = totalMonthIncome - totalMonthExpenses
+  const animExpenses = useCountUp(totalMonthExpenses)
+  const animIncome = useCountUp(totalMonthIncome)
+  const animNet = useCountUp(Math.abs(netSavings))
 
   return (
     <div className="app-shell">
@@ -2394,16 +2436,16 @@ export default function App() {
             <div className="overview-kpi-row">
               <div className="kpi-card card">
                 <span className="kpi-label">Monthly Expenses</span>
-                <span className="kpi-value">{totalMonthExpenses.toFixed(2)} kr</span>
+                <span className="kpi-value">{animExpenses.toFixed(2)} kr</span>
               </div>
               <div className="kpi-card card">
                 <span className="kpi-label">Monthly Income</span>
-                <span className="kpi-value kpi-income">{totalMonthIncome.toFixed(2)} kr</span>
+                <span className="kpi-value kpi-income">{animIncome.toFixed(2)} kr</span>
               </div>
               <div className="kpi-card card">
                 <span className="kpi-label">Net Savings</span>
                 <span className={`kpi-value${netSavings >= 0 ? ' kpi-positive' : ' kpi-negative'}`}>
-                  {netSavings >= 0 ? '+' : ''}{netSavings.toFixed(2)} kr
+                  {netSavings >= 0 ? '+' : ''}{animNet.toFixed(2)} kr
                 </span>
               </div>
             </div>
