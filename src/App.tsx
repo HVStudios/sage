@@ -1127,9 +1127,7 @@ export default function App() {
   const [guestMode, setGuestMode] = useState(false)
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [incomes, setIncomes] = useState<Income[]>([])
-  const [budgets, setBudgets] = useState<Record<string, number>>(() => {
-    try { return JSON.parse(localStorage.getItem('budgets_v1') ?? '{}') } catch { return {} }
-  })
+  const [budgets, setBudgets] = useState<Record<string, number>>({})
   const [activeTab, setActiveTab] = useState<MobileTab>('overview')
   const [currentMonth, setCurrentMonth] = useState<MonthState>(() => {
     const now = new Date()
@@ -1148,28 +1146,35 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    localStorage.setItem('budgets_v1', JSON.stringify(budgets))
-  }, [budgets])
-
-  function setBudgetForCategory(category: string, amount: number) {
-    setBudgets(prev => ({ ...prev, [category]: amount }))
-  }
-
-  useEffect(() => {
     let cancelled = false
     ;(async () => {
-      if (guestMode || !session) { setExpenses([]); setIncomes([]); return }
-      const [expensesRes, incomesRes] = await Promise.all([
+      if (guestMode || !session) { setExpenses([]); setIncomes([]); setBudgets({}); return }
+      const [expensesRes, incomesRes, budgetsRes] = await Promise.all([
         supabase.from('expenses').select('*'),
         supabase.from('incomes').select('*'),
+        supabase.from('budgets').select('category, amount'),
       ])
       if (!cancelled) {
         if (!expensesRes.error) setExpenses(expensesRes.data ?? [])
         if (!incomesRes.error) setIncomes(incomesRes.data ?? [])
+        if (!budgetsRes.error) {
+          const map: Record<string, number> = {}
+          for (const row of budgetsRes.data ?? []) map[row.category] = row.amount
+          setBudgets(map)
+        }
       }
     })()
     return () => { cancelled = true }
   }, [session, guestMode])
+
+  async function setBudgetForCategory(category: string, amount: number) {
+    setBudgets(prev => ({ ...prev, [category]: amount }))
+    if (guestMode || !session) return
+    const { error } = await supabase
+      .from('budgets')
+      .upsert({ user_id: session.user.id, category, amount }, { onConflict: 'user_id,category' })
+    if (error) console.error(error)
+  }
 
   function prevMonth() {
     setCurrentMonth(({ year, month }) => {
