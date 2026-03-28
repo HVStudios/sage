@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, LineChart, Line } from 'recharts'
 import type { TooltipContentProps } from 'recharts'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabaseClient'
@@ -1689,9 +1689,31 @@ function YearView({ expenses, incomes, currentYear, currentMonth, onSelectMonth 
     return n.toFixed(0)
   }
 
+  const chartData = rows.map(({ month, mExp, mInc }) => ({
+    label: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][month],
+    income: mInc || null,
+    expenses: mExp || null,
+  }))
+
   return (
     <div className="year-view card">
       <h2>{currentYear} at a glance</h2>
+      <div className="year-chart">
+        <ResponsiveContainer width="100%" height={180}>
+          <LineChart data={chartData} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
+            <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="4 4" />
+            <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text)' }} />
+            <YAxis tickFormatter={formatYTick} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text)' }} width={36} tickCount={4} />
+            <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'var(--border)', strokeWidth: 1 }} />
+            <Line type="monotone" dataKey="income" name="income" stroke="#10b981" strokeWidth={2} dot={false} connectNulls={false} activeDot={{ r: 4, fill: '#10b981' }} />
+            <Line type="monotone" dataKey="expenses" name="expenses" stroke="var(--accent)" strokeWidth={2} dot={false} connectNulls={false} activeDot={{ r: 4, fill: 'var(--accent)' }} />
+          </LineChart>
+        </ResponsiveContainer>
+        <div className="year-chart-legend">
+          <span className="year-legend-item"><span className="year-legend-dot" style={{ background: '#10b981' }} />Income</span>
+          <span className="year-legend-item"><span className="year-legend-dot" style={{ background: 'var(--accent)' }} />Expenses</span>
+        </div>
+      </div>
       <div className="year-table">
         <div className="year-header">
           <span>Month</span>

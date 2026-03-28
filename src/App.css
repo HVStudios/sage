@@ -1927,8 +1927,35 @@ tbody tr:hover td {
   gap: 0;
 }
 
-.year-table {
+.year-chart {
   margin-top: 12px;
+}
+
+.year-chart-legend {
+  display: flex;
+  gap: 16px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.year-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.year-legend-dot {
+  width: 10px;
+  height: 3px;
+  border-radius: 99px;
+  flex-shrink: 0;
+}
+
+.year-table {
+  margin-top: 20px;
   display: flex;
   flex-direction: column;
 }
