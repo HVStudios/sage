@@ -47,6 +47,18 @@ interface MonthState {
   month: number
 }
 
+interface Goal {
+  id: string
+  user_id?: string
+  name: string
+  target_amount: number
+  current_amount: number
+  deadline?: string | null
+  icon: string
+  color: string
+  created_at?: string
+}
+
 interface ChartEntry {
   label: string
   expenses: number
@@ -589,6 +601,220 @@ function computeAchievements(
 
 function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// ── Smart Insights ──────────────────────────────────────────
+
+interface Insight {
+  type: 'positive' | 'warning' | 'info'
+  icon: string
+  title: string
+  body: string
+}
+
+function computeInsights(
+  expenses: Expense[],
+  incomes: Income[],
+  recurringExpenses: RecurringExpense[],
+  currentMonth: MonthState,
+): Insight[] {
+  const insights: Insight[] = []
+
+  function ymOffset(offset: number): string {
+    const d = new Date(currentMonth.year, currentMonth.month + offset)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  }
+
+  const currentYM = ymOffset(0)
+
+  const prevMonths = [-3, -2, -1].map(ymOffset)
+  const prevData = prevMonths.map(ym =>
+    expenses.filter(e => e.date.startsWith(ym)).reduce<Record<string, number>>((acc, e) => {
+      acc[e.category] = (acc[e.category] ?? 0) + e.amount
+      return acc
+    }, {})
+  )
+  const monthsWithData = prevData.filter(m => Object.keys(m).length > 0).length
+
+  const currentByCat = expenses.filter(e => e.date.startsWith(currentYM)).reduce<Record<string, number>>((acc, e) => {
+    acc[e.category] = (acc[e.category] ?? 0) + e.amount
+    return acc
+  }, {})
+
+  if (monthsWithData >= 1) {
+    const allCats = new Set([...prevData.flatMap(m => Object.keys(m)), ...Object.keys(currentByCat)])
+    let biggestIncreaseCat = ''
+    let biggestIncreasePct = 0
+    for (const cat of allCats) {
+      const curr = currentByCat[cat] ?? 0
+      const avgs = prevData.map(m => m[cat] ?? 0)
+      const avg = avgs.reduce((s, v) => s + v, 0) / avgs.length
+      if (avg > 200 && curr > 0) {
+        const pct = ((curr - avg) / avg) * 100
+        if (pct > biggestIncreasePct) {
+          biggestIncreasePct = pct
+          biggestIncreaseCat = cat
+        }
+      }
+    }
+    if (biggestIncreaseCat && biggestIncreasePct > 15) {
+      const avg = prevData.map(m => m[biggestIncreaseCat] ?? 0).reduce((s, v) => s + v, 0) / prevData.length
+      insights.push({
+        type: 'warning',
+        icon: '📈',
+        title: `${biggestIncreaseCat} is up ${Math.round(biggestIncreasePct)}%`,
+        body: `You've spent ${Math.round(currentByCat[biggestIncreaseCat])} kr this month vs your ${monthsWithData}-month average of ${Math.round(avg)} kr.`,
+      })
+    }
+  }
+
+  if (monthsWithData >= 2) {
+    let topCat = ''
+    let topSaving = 0
+    for (const [cat, curr] of Object.entries(currentByCat)) {
+      const avgs = prevData.map(m => m[cat] ?? 0)
+      const populated = avgs.filter(v => v > 0)
+      if (populated.length < 1) continue
+      const avg = avgs.reduce((s, v) => s + v, 0) / avgs.length
+      const saving = curr - avg
+      if (saving > topSaving) { topSaving = saving; topCat = cat }
+    }
+    if (topCat && topSaving > 300) {
+      insights.push({
+        type: 'info',
+        icon: '💡',
+        title: `Save ~${Math.round(topSaving)} kr on ${topCat}`,
+        body: `Bringing ${topCat} spending back to your recent average could save you around ${Math.round(topSaving)} kr this month.`,
+      })
+    }
+  }
+
+  if (recurringExpenses.filter(r => r.active).length > 0) {
+    const monthlyRecurring = recurringExpenses
+      .filter(r => r.active)
+      .reduce((s, r) => {
+        if (r.frequency === 'monthly') return s + r.amount
+        if (r.frequency === 'yearly') return s + r.amount / 12
+        if (r.frequency === 'weekly') return s + r.amount * 4.33
+        if (r.frequency === 'daily') return s + r.amount * 30
+        return s
+      }, 0)
+    const prevIncomes = [-3, -2, -1].map(o => {
+      const ym = ymOffset(o)
+      return incomes.filter(i => i.date.startsWith(ym)).reduce((s, i) => s + i.amount, 0)
+    }).filter(v => v > 0)
+    if (prevIncomes.length > 0) {
+      const avgIncome = prevIncomes.reduce((s, v) => s + v, 0) / prevIncomes.length
+      const pct = Math.round((monthlyRecurring / avgIncome) * 100)
+      if (pct > 0) {
+        const type = pct > 50 ? 'warning' : pct > 30 ? 'info' : 'positive'
+        insights.push({
+          type,
+          icon: pct > 40 ? '⚠️' : '🔄',
+          title: `Recurring costs: ${pct}% of income`,
+          body: `Your ${recurringExpenses.filter(r => r.active).length} recurring expenses add up to ~${Math.round(monthlyRecurring).toLocaleString('no')} kr/month.`,
+        })
+      }
+    }
+  }
+
+  const allMonths = [...new Set(expenses.map(e => e.date.slice(0, 7)).concat(incomes.map(i => i.date.slice(0, 7))))].sort()
+  let bestYM = ''
+  let bestRate = -Infinity
+  for (const ym of allMonths) {
+    if (ym === currentYM) continue
+    const exp = expenses.filter(e => e.date.startsWith(ym)).reduce((s, e) => s + e.amount, 0)
+    const inc = incomes.filter(i => i.date.startsWith(ym)).reduce((s, i) => s + i.amount, 0)
+    if (inc > 0) {
+      const rate = (inc - exp) / inc * 100
+      if (rate > bestRate) { bestRate = rate; bestYM = ym }
+    }
+  }
+  if (bestYM && bestRate > 10) {
+    const [y, m] = bestYM.split('-').map(Number)
+    const label = new Date(y, m - 1).toLocaleString('default', { month: 'long', year: 'numeric' })
+    insights.push({
+      type: 'positive',
+      icon: '🏆',
+      title: `Best month: ${label}`,
+      body: `You saved ${Math.round(bestRate)}% of your income — your personal record. Keep it up!`,
+    })
+  }
+
+  return insights
+}
+
+// ── Forecast ────────────────────────────────────────────────
+
+interface Forecast {
+  projectedExpenses: number
+  projectedNet: number
+  dailyRate: number
+  daysElapsed: number
+  daysInMonth: number
+  next30Cashflow: number
+  hasEnoughData: boolean
+}
+
+function computeForecast(
+  expenses: Expense[],
+  incomes: Income[],
+  recurringExpenses: RecurringExpense[],
+  currentMonth: MonthState,
+): Forecast | null {
+  const now = new Date()
+  const isCurrentMonth = currentMonth.year === now.getFullYear() && currentMonth.month === now.getMonth()
+  if (!isCurrentMonth) return null
+
+  const daysElapsed = now.getDate()
+  const daysInMonth = new Date(currentMonth.year, currentMonth.month + 1, 0).getDate()
+  const currentYM = `${currentMonth.year}-${String(currentMonth.month + 1).padStart(2, '0')}`
+
+  const monthExpenses = expenses.filter(e => e.date.startsWith(currentYM)).reduce((s, e) => s + e.amount, 0)
+  const monthIncome = incomes.filter(i => i.date.startsWith(currentYM)).reduce((s, i) => s + i.amount, 0)
+
+  if (daysElapsed < 3) return null
+
+  const dailyRate = monthExpenses / daysElapsed
+  const projectedExpenses = dailyRate * daysInMonth
+  const projectedNet = monthIncome - projectedExpenses
+
+  const prevMonths = [-3, -2, -1].map(o => {
+    const d = new Date(currentMonth.year, currentMonth.month + o)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })
+  const avgDailyFromHistory = prevMonths.reduce((sum, ym) => {
+    const total = expenses.filter(e => e.date.startsWith(ym)).reduce((s, e) => s + e.amount, 0)
+    const d = new Date(Number(ym.split('-')[0]), Number(ym.split('-')[1]) - 1 + 1, 0).getDate()
+    return sum + total / d
+  }, 0) / 3
+
+  const dailyForForecast = avgDailyFromHistory > 0 ? avgDailyFromHistory : dailyRate
+  const monthlyRecurring = recurringExpenses.filter(r => r.active).reduce((s, r) => {
+    if (r.frequency === 'monthly') return s + r.amount
+    if (r.frequency === 'yearly') return s + r.amount / 12
+    if (r.frequency === 'weekly') return s + r.amount * 4.33
+    if (r.frequency === 'daily') return s + r.amount * 30
+    return s
+  }, 0)
+
+  const avgIncome = prevMonths.reduce((sum, ym) => {
+    return sum + incomes.filter(i => i.date.startsWith(ym)).reduce((s, i) => s + i.amount, 0)
+  }, 0) / 3
+
+  const next30Projected = dailyForForecast * 30 + monthlyRecurring
+  const next30Income = avgIncome > 0 ? avgIncome : monthIncome
+  const next30Cashflow = next30Income - next30Projected
+
+  return {
+    projectedExpenses,
+    projectedNet,
+    dailyRate,
+    daysElapsed,
+    daysInMonth,
+    next30Cashflow,
+    hasEnoughData: daysElapsed >= 5,
+  }
 }
 
 function getOccurrencesInMonth(rec: RecurringExpense, year: number, month: number): string[] {
@@ -1815,6 +2041,88 @@ function YearView({ expenses, incomes, currentYear, currentMonth, onSelectMonth 
   )
 }
 
+// ── Forecast Card ───────────────────────────────────────────
+
+interface ForecastCardProps {
+  expenses: Expense[]
+  incomes: Income[]
+  recurringExpenses: RecurringExpense[]
+  currentMonth: MonthState
+}
+
+function ForecastCard({ expenses, incomes, recurringExpenses, currentMonth }: ForecastCardProps) {
+  const forecast = useMemo(
+    () => computeForecast(expenses, incomes, recurringExpenses, currentMonth),
+    [expenses, incomes, recurringExpenses, currentMonth]
+  )
+
+  if (!forecast) return null
+
+  const overspendAmt = forecast.projectedNet < 0 ? Math.abs(forecast.projectedNet) : null
+  const savingAmt = forecast.projectedNet >= 0 ? forecast.projectedNet : null
+
+  return (
+    <div className="forecast-card card">
+      <div className="forecast-header">
+        <span className="forecast-title">End-of-month forecast</span>
+        <span className="forecast-meta">{forecast.daysElapsed} of {forecast.daysInMonth} days</span>
+      </div>
+      <div className="forecast-body">
+        <div className="forecast-main">
+          <span className="forecast-label">Projected spend</span>
+          <span className="forecast-value">{Math.round(forecast.projectedExpenses).toLocaleString('no')} kr</span>
+        </div>
+        <div className={`forecast-outcome${overspendAmt ? ' forecast-over' : ' forecast-ok'}`}>
+          {overspendAmt
+            ? `You're on track to overspend by ${Math.round(overspendAmt).toLocaleString('no')} kr`
+            : `You're on track to save ${Math.round(savingAmt!).toLocaleString('no')} kr`}
+        </div>
+      </div>
+      <div className="forecast-footer">
+        <span className="forecast-rate">{Math.round(forecast.dailyRate).toLocaleString('no')} kr/day avg</span>
+        <span className={`forecast-cashflow${forecast.next30Cashflow < 0 ? ' forecast-over' : ''}`}>
+          30-day cashflow: {forecast.next30Cashflow >= 0 ? '+' : ''}{Math.round(forecast.next30Cashflow).toLocaleString('no')} kr
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ── Smart Insights Card ──────────────────────────────────────
+
+interface SmartInsightsCardProps {
+  expenses: Expense[]
+  incomes: Income[]
+  recurringExpenses: RecurringExpense[]
+  currentMonth: MonthState
+}
+
+function SmartInsightsCard({ expenses, incomes, recurringExpenses, currentMonth }: SmartInsightsCardProps) {
+  const insights = useMemo(
+    () => computeInsights(expenses, incomes, recurringExpenses, currentMonth),
+    [expenses, incomes, recurringExpenses, currentMonth]
+  )
+
+  if (insights.length === 0) return null
+
+  return (
+    <div className="insights-card card">
+      <h2>Smart insights</h2>
+      <div className="insights-list">
+        {insights.map((ins, i) => (
+          <div key={i} className={`insight-row insight-${ins.type}`}>
+            <span className="insight-icon">{ins.icon}</span>
+            <div className="insight-content">
+              <span className="insight-title">{ins.title}</span>
+              <span className="insight-body">{ins.body}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 interface OverviewStatsCardProps {
   expenses: Expense[]
   incomes: Income[]
@@ -2039,7 +2347,187 @@ function ProfileTab({ expenses, incomes, budgets, recurringExpenses, session, gu
   )
 }
 
-type MobileTab = 'overview' | 'expenses' | 'income' | 'budgets' | 'recurring' | 'profile'
+// ── Goals Tab ────────────────────────────────────────────────
+
+const GOAL_ICONS = ['🎯', '✈️', '🏠', '🚗', '💻', '📱', '🎓', '💍', '🏖️', '🏋️', '🎸', '💰']
+const GOAL_COLORS = ['#4f7c62', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#10b981', '#f97316']
+
+interface GoalsTabProps {
+  session: Session | null
+  guestMode: boolean
+}
+
+function GoalsTab({ session, guestMode }: GoalsTabProps) {
+  const [goals, setGoals] = useState<Goal[]>([])
+  const [showForm, setShowForm] = useState(false)
+  const [contributing, setContributing] = useState<string | null>(null)
+  const [contributionAmount, setContributionAmount] = useState('')
+  const [form, setForm] = useState({ name: '', target_amount: '', deadline: '', icon: '🎯', color: '#4f7c62' })
+
+  useEffect(() => {
+    if (guestMode || !session) { setGoals([]); return }
+    supabase.from('goals').select('*').order('created_at', { ascending: true }).then(({ data, error }) => {
+      if (!error) setGoals((data ?? []) as Goal[])
+    })
+  }, [session, guestMode])
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault()
+    const target = parseFloat(form.target_amount)
+    if (!form.name || isNaN(target) || target <= 0) return
+    if (guestMode || !session) return
+
+    const { data, error } = await supabase
+      .from('goals')
+      .insert({ user_id: session.user.id, name: form.name, target_amount: target, current_amount: 0, deadline: form.deadline || null, icon: form.icon, color: form.color })
+      .select().single()
+    if (error) { console.error(error); return }
+    setGoals(prev => [...prev, data as Goal])
+    setForm({ name: '', target_amount: '', deadline: '', icon: '🎯', color: '#4f7c62' })
+    setShowForm(false)
+  }
+
+  async function handleContribute(goal: Goal) {
+    const amount = parseFloat(contributionAmount)
+    if (isNaN(amount) || amount <= 0) return
+    const newAmount = Math.min(goal.current_amount + amount, goal.target_amount)
+    const { data, error } = await supabase.from('goals').update({ current_amount: newAmount }).eq('id', goal.id).select().single()
+    if (error) { console.error(error); return }
+    setGoals(prev => prev.map(g => g.id === goal.id ? data as Goal : g))
+    setContributing(null)
+    setContributionAmount('')
+  }
+
+  async function handleDelete(id: string) {
+    const { error } = await supabase.from('goals').delete().eq('id', id)
+    if (error) { console.error(error); return }
+    setGoals(prev => prev.filter(g => g.id !== id))
+  }
+
+  function deadlineLabel(deadline?: string | null): string {
+    if (!deadline) return ''
+    const diff = Math.ceil((new Date(deadline + 'T00:00:00').getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    if (diff < 0) return 'Overdue'
+    if (diff === 0) return 'Due today'
+    if (diff === 1) return '1 day left'
+    return `${diff} days left`
+  }
+
+  if (guestMode) {
+    return (
+      <div className="goals-tab">
+        <div className="card">
+          <p className="empty">Sign in to track your goals across devices.</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="goals-tab">
+      <div className="goals-header">
+        <h2 style={{ margin: 0 }}>Goals</h2>
+        <button className="add-btn" style={{ width: 'auto', padding: '8px 18px' }} onClick={() => setShowForm(f => !f)}>
+          {showForm ? 'Cancel' : '+ New Goal'}
+        </button>
+      </div>
+
+      {showForm && (
+        <form className="add-form card" onSubmit={handleAdd}>
+          <h2>New Goal</h2>
+          <div className="form-grid">
+            <label style={{ gridColumn: '1 / -1' }}>
+              Goal name
+              <input type="text" placeholder="e.g. Travel to Japan" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
+            </label>
+            <label>
+              Target amount (kr)
+              <input type="number" min="1" step="1" placeholder="50000" value={form.target_amount} onChange={e => setForm(f => ({ ...f, target_amount: e.target.value }))} required />
+            </label>
+            <label>
+              Deadline <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span>
+              <input type="date" value={form.deadline} onChange={e => setForm(f => ({ ...f, deadline: e.target.value }))} />
+            </label>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <p style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 500 }}>Icon</p>
+              <div className="goal-icon-picker">
+                {GOAL_ICONS.map(icon => (
+                  <button type="button" key={icon} className={`goal-icon-btn${form.icon === icon ? ' selected' : ''}`} onClick={() => setForm(f => ({ ...f, icon }))}>
+                    {icon}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <p style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 500 }}>Colour</p>
+              <div className="goal-color-picker">
+                {GOAL_COLORS.map(color => (
+                  <button type="button" key={color} className={`goal-color-btn${form.color === color ? ' selected' : ''}`} style={{ background: color }} onClick={() => setForm(f => ({ ...f, color }))} />
+                ))}
+              </div>
+            </div>
+            <button type="submit" className="add-btn" style={{ gridColumn: '1 / -1' }}>Create Goal</button>
+          </div>
+        </form>
+      )}
+
+      {goals.length === 0 ? (
+        <div className="card"><p className="empty">No goals yet. Create one to start tracking your savings targets.</p></div>
+      ) : (
+        <div className="goals-list">
+          {goals.map(goal => {
+            const pct = goal.target_amount > 0 ? Math.min((goal.current_amount / goal.target_amount) * 100, 100) : 0
+            const done = pct >= 100
+            const dlLabel = deadlineLabel(goal.deadline)
+            const dlOverdue = dlLabel === 'Overdue'
+            return (
+              <div key={goal.id} className={`goal-card card${done ? ' goal-done' : ''}`}>
+                <div className="goal-card-header">
+                  <span className="goal-icon">{goal.icon}</span>
+                  <div className="goal-info">
+                    <span className="goal-name">{goal.name}</span>
+                    {dlLabel && <span className={`goal-deadline${dlOverdue ? ' goal-overdue' : ''}`}>{dlLabel}</span>}
+                  </div>
+                  <button className="delete-btn" onClick={() => handleDelete(goal.id)} style={{ marginLeft: 'auto' }}>&#215;</button>
+                </div>
+                <div className="goal-progress-row">
+                  <span className="goal-amounts">
+                    <span style={{ fontWeight: 700, fontSize: 18 }}>{Math.round(goal.current_amount).toLocaleString('no')}</span>
+                    <span style={{ opacity: 0.5 }}> / {Math.round(goal.target_amount).toLocaleString('no')} kr</span>
+                  </span>
+                  <span className="goal-pct" style={{ color: goal.color }}>{Math.round(pct)}%</span>
+                </div>
+                <div className="goal-bar-track">
+                  <div className="goal-bar-fill" style={{ width: `${pct.toFixed(1)}%`, background: done ? '#10b981' : goal.color }} />
+                </div>
+                {done ? (
+                  <p className="goal-done-label">🎉 Goal reached!</p>
+                ) : contributing === goal.id ? (
+                  <div className="goal-contribute-row">
+                    <input
+                      type="number" min="1" step="1" placeholder="Amount (kr)" autoFocus
+                      value={contributionAmount}
+                      onChange={e => setContributionAmount(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleContribute(goal); if (e.key === 'Escape') { setContributing(null); setContributionAmount('') } }}
+                    />
+                    <button className="save-btn" onClick={() => handleContribute(goal)}>&#10003;</button>
+                    <button className="cancel-btn" onClick={() => { setContributing(null); setContributionAmount('') }}>&#10005;</button>
+                  </div>
+                ) : (
+                  <button className="goal-contribute-btn" style={{ borderColor: goal.color, color: goal.color }} onClick={() => { setContributing(goal.id); setContributionAmount('') }}>
+                    + Add contribution
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+type MobileTab = 'overview' | 'expenses' | 'income' | 'budgets' | 'recurring' | 'goals' | 'profile'
 
 type SidebarProps = {
   active: MobileTab
@@ -2057,6 +2545,7 @@ function Sidebar({ active, onChange, session, guestMode, onSignOut, onSignIn }: 
     { tab: 'income', label: 'Income', icon: <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="8" /><path d="M10 13.5v-7M7.5 9l2.5-2.5L12.5 9" /></svg> },
     { tab: 'budgets', label: 'Budgets', icon: <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true"><path d="M3 16h14M5 16V10m4 6V6m4 10V8m4 8V4" /></svg> },
     { tab: 'recurring', label: 'Recurring', icon: <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true"><path d="M4 10a6 6 0 116 6" /><path d="M4 6v4h4" /></svg> },
+    { tab: 'goals', label: 'Goals', icon: <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="3"/><line x1="10" y1="1" x2="10" y2="3"/></svg> },
     { tab: 'profile', label: 'Profile', icon: <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18" aria-hidden="true"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" /></svg> },
   ]
   return (
@@ -2125,6 +2614,14 @@ function MobileTabBar({ active, onChange }: { active: MobileTab; onChange: (t: M
           <path d="M4 6v4h4" />
         </svg>
         <span>Recurring</span>
+      </button>
+      <button className={`tab-btn${active === 'goals' ? ' tab-active' : ''}`} onClick={() => onChange('goals')}>
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="22" height="22" aria-hidden="true">
+          <circle cx="10" cy="10" r="7"/>
+          <circle cx="10" cy="10" r="3"/>
+          <line x1="10" y1="1" x2="10" y2="3"/>
+        </svg>
+        <span>Goals</span>
       </button>
       <button className={`tab-btn${active === 'profile' ? ' tab-active' : ''}`} onClick={() => onChange('profile')}>
         <svg viewBox="0 0 20 20" fill="currentColor" width="22" height="22" aria-hidden="true">
@@ -2432,6 +2929,7 @@ export default function App() {
           <MonthNav currentMonth={currentMonth} onPrev={prevMonth} onNext={nextMonth} />
           <div className={`content-overview${activeTab !== 'overview' ? ' mobile-hidden' : ''}`}>
             <BalanceCard totalIncome={totalMonthIncome} totalExpenses={totalMonthExpenses} />
+            <ForecastCard expenses={expenses} incomes={incomes} recurringExpenses={recurringExpenses} currentMonth={currentMonth} />
             <div className="overview-kpi-row">
               <div className="kpi-card card">
                 <span className="kpi-label">Monthly Expenses</span>
@@ -2458,6 +2956,7 @@ export default function App() {
               budgets={budgets}
               currentMonth={currentMonth}
             />
+            <SmartInsightsCard expenses={expenses} incomes={incomes} recurringExpenses={recurringExpenses} currentMonth={currentMonth} />
             <SpendingTrends expenses={expenses} currentMonth={currentMonth} />
             <YearView
               expenses={expenses}
@@ -2503,6 +3002,9 @@ export default function App() {
               onDelete={handleDeleteRecurring}
               onToggle={handleToggleRecurring}
             />
+          </div>
+          <div className={`goals-wrapper${activeTab !== 'goals' ? ' mobile-hidden' : ''}`}>
+            <GoalsTab session={session} guestMode={guestMode} />
           </div>
           <div className={`profile-wrapper${activeTab !== 'profile' ? ' mobile-hidden' : ''}`}>
             <ProfileTab
